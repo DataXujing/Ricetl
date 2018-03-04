@@ -1,0 +1,236 @@
+#' @title R for Data Extraction of Resident Identity Card (PRC)
+#' @description Ricetl() method to extraction the resident identity card (PRC),Using Ricetl() dialytic ID data.
+#'
+#' @name Ricetl
+#' @aliases Ricetl
+#' @author XuJing
+#' @usage Ricetl()
+#' @import tidyverse
+#' @import stringr
+#' @import readr
+#' @import readxl
+#' @import writexl
+#' @import gWidgets
+#' @import utils
+#' @import devtools
+#'
+#' @examples
+#' \dontrun{
+#' Ricetl()
+#' }
+#'
+#' @export Ricetl
+Ricetl <- function(){
+  data_source_id <- data.frame()
+  options(warn=-1)
+  options(guiToolkit="RGtk2")
+  ##main window
+  win <- gwindow('R for Data Extraction of Resident Identity Card (PRC)--[Ricetl]',visible=FALSE)
+
+  ##toolbar
+
+  my_Open <-  gaction(label="打开", icon="open",handler=function(h,...){
+    my_path = choose.files(caption = "Choose One File to -Ricetl-package")
+    if(length(my_path)==0)
+      galert('请选择需要处理的文件',title = "文件选择出现问题",delay = 6)
+    else{
+      if(grepl("\\.csv$", my_path))
+        data_source_id  <<-  readr::read_csv(my_path)
+      else{
+        if(grepl("\\.xlsx$", my_path))
+          data_source_id <<- readxl::read_excel(my_path)
+        else
+          galert('请选择正确的文件格式！',title = "文件选择出现问题",delay = 6)
+      }
+
+    }
+
+  })
+
+
+  my_save <- gaction(label='保存',icon='save',handler=function(h,...){
+    my_path_save = choose.dir(caption = "Choose the Save Dir -Ricetl-package")
+
+    readr::write_csv(all_data,path=paste0(my_path_save,'\\data_result.csv'))
+
+  })
+
+  my_close <- gaction(label='关闭',icon='close',handler=function(h,...){
+    dispose(win)
+  })
+
+  my_about_content <- "Ricetl包是一个提取中华人民共和国居民身份证号数据的带有Gui的函数集,期待体验."
+  my_about <- gaction(label='关于',icon='about',handler=function(h,...){
+    gmessage(my_about_content,title = "About Ricetl",parent=win)
+  })
+
+  my_list <- list(
+    open = my_Open,
+    sep = list(separator = TRUE),
+    save = my_save,
+    sep = list(separator = TRUE),
+    close = my_close,
+    sep = list(separator = TRUE),
+    about = my_about,
+    sep = list(separator = TRUE))
+
+
+  gtb <- gWidgets::gtoolbar(toolbarlist = my_list,container = win)
+
+  ##gframe
+  gf <- gframe(horizontal=FALSE, container=win)
+
+  ## select contant
+  bg_gl <- ggroup(container = gf)
+
+  ### select year
+  gl_year <- glabel("Year:", container=bg_gl)
+  year_value <- gedit(text = "2018", width = 4,  container = bg_gl)
+  gseparator(horizontal = FALSE,container = bg_gl)
+
+  ### select mising type
+  gl_miss <- glabel("Missing:", container=bg_gl)
+  miss_value <- gWidgets::gdroplist(items=c('NA','Mean'), selected = 1, editable = TRUE,container = bg_gl)
+  gseparator(horizontal = FALSE,container = bg_gl)
+
+  ### run my data
+  gbutton("execute", container=bg_gl, handler = function(h,...) {
+
+    #age
+    if(svalue(miss_value)=='NA')
+      my_age <- as.numeric(svalue(year_value)) - as.numeric(stringr::str_sub(as.vector(data.frame(data_source_id)[,1]),7L,10L))
+    else{
+      if(svalue(miss_value)=='Mean'){
+        my_age_f <- as.numeric(svalue(year_value)) - as.numeric(stringr::str_sub(as.vector(data.frame(data_source_id)[,1]),7L,10L))
+        my_age <- ifelse(!is.na(my_age_f),my_age_f,mean(my_age_f,na.rm = TRUE))
+      }
+
+      else{
+        my_age_f <- as.numeric(svalue(year_value)) - as.numeric(stringr::str_sub(as.vector(data.frame(data_source_id)[,1]),7L,10L))
+        my_age <- ifelse(!is.na(my_age_f),my_age_f,svalue(miss_value))
+      }
+    }
+
+    #gender
+
+    if(svalue(miss_value)=='NA')
+      my_sex <- as.numeric(stringr::str_sub(as.vector(data.frame(data_source_id)[,1]),17L,17L)) %% 2
+    else{
+      my_sex <- as.numeric(stringr::str_sub(as.vector(data.frame(data_source_id)[,1]),17L,17L)) %% 2
+      galert('该选项仅对年龄提取的缺失值填补有意义!',title = "WARN-[Ricetl]",delay = 6)
+    }
+
+
+    #address
+
+    my_addr <- as.numeric(stringr::str_sub(as.vector(data.frame(data_source_id)[,1]),1L,6L))
+    my_addr_2 <- sapply(my_addr,address_code)
+
+
+    #Verify Result
+    vrs <- lapply(as.vector(data_source_id),str_ext)
+    my_vrs <- unlist(plyr::llply(vrs[[1]],VeRe))
+
+
+    all_data <<- data.frame('身份证号'=data_source_id,'地址'=my_addr_2,
+                            '年龄'=my_age,'性别'=my_sex,'校验结果'=my_vrs)
+
+
+    my_df <- gdf(all_data, container=gf, do.subset=TRUE)
+
+
+  })
+
+  gseparator(horizontal = FALSE,container = bg_gl)
+
+
+  gseparator(horizontal = TRUE,container = gf)
+  gseparator(horizontal = TRUE,container = gf)
+
+
+
+  bg_note <- ggroup(container = gf)
+  gseparator(horizontal = TRUE,container = gf)
+  gseparator(horizontal = TRUE,container = gf)
+  gl_note <- glabel("The output of the ID card number is listed as the identity card number corresponding
+to the household registration address,the corresponding age of the residents,
+the corresponding sex of the residents (1: male, 0: female) and the check code,
+so we can choose the year to calculate the age of residents and the missing data,
+which is worth filling.",container=bg_note)
+
+
+
+  size(win) <- c(600, 400)
+  visible(win) <- TRUE
+
+
+}
+
+
+## Basic func for veRe
+str_ext <- function(x){
+  return(stringr::str_extract_all(x,pattern = ''))
+}
+
+
+VeRe <- function(x){
+  if(length(x)!=18){
+    y ='No'
+  }
+  else{
+    y1 <- sum(as.numeric(x)[1:17]*c(7,9,10,5,8,4,2,1,6,3,7,9,10,5,8,4,2)) %% 11
+    if(y1==0 & x[18]=='1')
+      y='Yes'
+    else if(y1==1 & x[18]=='0'){
+      y='Yes'
+    }
+    else if(y1==2 & x[18]=='X'){
+      y='Yes'
+    }
+    else if(y1==3 & x[18]=='9'){
+      y='Yes'
+    }
+    else if(y1==4 & x[18]=='8'){
+      y='Yes'
+    }
+    else if(y1==5 & x[18]=='7'){
+      y='Yes'
+    }
+    else if(y1==6 & x[18]=='6'){
+      y='Yes'
+    }
+    else if(y1==7 & x[18]=='5'){
+      y='Yes'
+    }
+    else if(y1==8 & x[18]=='4'){
+      y='Yes'
+    }
+    else if(y1==9 & x[18]=='3'){
+      y='Yes'
+    }
+    else if(y1==10 & x[18]=='2'){
+      y='Yes'
+    }
+    else
+      y='No'
+  }
+  return(y)
+}
+
+
+address_code <- function(x){
+  #id6 <- load('data/id_card6.RData')
+  data(id_card6)
+  if(sum(id_card6$b6 %in% x) == 1){
+    my_addr_1 <- id_card6[which(id_card6$b6 %in% x),]$adds
+  }
+  else{
+    my_addr_1 <- NA
+  }
+
+  my_addr_1
+}
+
+
+
+
